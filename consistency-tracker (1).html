@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Consistency Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #fdf6f9;
+    --surface:   #ffffff;
+    --surface2:  #f9f0f5;
+    --border:    #ead4e3;
+    --accent:    #9b6fa8;
+    --accent2:   #c9a0d4;
+    --accent3:   #e8b4cc;
+    --pink:      #f4c2d4;
+    --pink-soft: #fce8f1;
+    --beige:     #f5ede3;
+    --beige2:    #ecddd0;
+    --purple:    #b89acf;
+    --text:      #3a2d42;
+    --muted:     #b09ab8;
+    --done-bg:   #fce8f5;
+    --danger:    #c0392b;
+    --radius:    16px;
+  }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 10% 0%,   #f9e8f4 0%, transparent 50%),
+      radial-gradient(ellipse at 90% 100%, #f5ede3 0%, transparent 50%);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    padding: 28px 20px 60px;
+  }
+
+  .app { max-width: 720px; margin: 0 auto; }
+
+  /* HEADER */
+  .header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 28px; }
+  .header-left h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+  .header-left h1 span { color: var(--accent); }
+  .header-left p { font-size: 12px; color: var(--muted); margin-top: 4px; font-family: 'DM Mono', monospace; }
+  .date-badge {
+    background: var(--beige);
+    border: 1px solid var(--beige2);
+    border-radius: 20px;
+    padding: 6px 16px;
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    color: var(--accent);
+  }
+
+  /* STATS */
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 22px; }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 10px;
+    text-align: center;
+    transition: border-color 0.2s, transform 0.15s;
+  }
+  .stat-card:hover { border-color: var(--accent2); transform: translateY(-2px); }
+  .stat-card.pink-card   { background: var(--pink-soft); border-color: var(--pink); }
+  .stat-card.purple-card { background: #f3eef8; border-color: var(--purple); }
+  .stat-card.beige-card  { background: var(--beige);  border-color: var(--beige2); }
+  .stat-card .num { font-size: 28px; font-weight: 800; line-height: 1; }
+  .stat-card .num.c-purple { color: var(--accent); }
+  .stat-card .num.c-pink   { color: #c2607a; }
+  .stat-card .num.c-beige  { color: #a07850; }
+  .stat-card .num.c-lavend { color: var(--purple); }
+  .stat-card .label { font-size: 10px; color: var(--muted); margin-top: 5px; text-transform: uppercase; letter-spacing: 0.07em; font-family: 'DM Mono', monospace; }
+
+  /* DAILY BREAKDOWN */
+  .daily-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 22px;
+    position: relative;
+    overflow: hidden;
+  }
+  .daily-section::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 120px; height: 120px;
+    background: radial-gradient(circle, #f4c2d420 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .daily-section h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-family: 'DM Mono', monospace; margin-bottom: 16px; }
+  .daily-layout { display: flex; align-items: center; gap: 28px; }
+
+  /* RING */
+  .ring-wrap { position: relative; width: 110px; height: 110px; flex-shrink: 0; }
+  .ring-wrap svg { transform: rotate(-90deg); }
+  .ring-bg   { fill: none; stroke: #ead4e3; stroke-width: 10; }
+  .ring-fill { fill: none; stroke: url(#ringGrad); stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 0.6s ease; }
+  .ring-label { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .ring-label .pct-num { font-size: 22px; font-weight: 800; color: var(--accent); }
+  .ring-label .pct-sub { font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; margin-top: 1px; }
+
+  /* CATEGORY BARS */
+  .category-bars { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+  .cat-bar-row { display: flex; align-items: center; gap: 10px; }
+  .cat-bar-label { font-size: 12px; color: var(--text); min-width: 100px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cat-bar-track { flex: 1; height: 7px; background: #ead4e320; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .cat-bar-fill  { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+  .cat-bar-pct   { font-size: 11px; font-family: 'DM Mono', monospace; color: var(--muted); min-width: 34px; text-align: right; }
+
+  /* WEEK */
+  .week-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 22px; }
+  .week-day {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 4px;
+    text-align: center;
+    transition: transform 0.15s;
+  }
+  .week-day:hover { transform: translateY(-2px); }
+  .week-day.today { border-color: var(--accent2); background: #f3eef8; }
+  .week-day .wd-name { font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; text-transform: uppercase; }
+  .week-day .wd-num  { font-size: 15px; font-weight: 700; margin-top: 2px; color: var(--text); }
+  .week-day.today .wd-num { color: var(--accent); }
+  .week-day .wd-bar  { height: 4px; border-radius: 2px; margin-top: 6px; background: var(--border); overflow: hidden; }
+  .week-day .wd-fill { height: 100%; background: linear-gradient(90deg, var(--accent2), var(--accent3)); border-radius: 2px; transition: width 0.4s ease; }
+
+  /* ADD HABIT */
+  .add-row { display: flex; gap: 10px; margin-bottom: 20px; }
+  .add-row input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 11px 14px;
+    font-size: 14px;
+    font-family: 'Syne', sans-serif;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .add-row input::placeholder { color: var(--muted); }
+  .add-row input:focus { border-color: var(--accent2); box-shadow: 0 0 0 3px #c9a0d420; }
+  .add-row select {
+    background: var(--beige);
+    border: 1px solid var(--beige2);
+    border-radius: 12px;
+    padding: 11px 10px;
+    font-size: 13px;
+    font-family: 'DM Mono', monospace;
+    color: var(--accent);
+    outline: none;
+    cursor: pointer;
+  }
+  .add-btn {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 11px 22px;
+    font-size: 20px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.15s, opacity 0.15s;
+    line-height: 1;
+  }
+  .add-btn:hover { opacity: 0.88; transform: scale(1.05); }
+  .add-btn:active { transform: scale(0.97); }
+
+  /* SECTION TITLE */
+  .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-family: 'DM Mono', monospace; margin-bottom: 10px; }
+
+  /* GROUPS */
+  .group { margin-bottom: 22px; }
+  .group-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .group-title  { font-size: 13px; font-weight: 700; color: var(--accent); }
+  .group-pct-pill {
+    background: var(--pink-soft);
+    border: 1px solid var(--pink);
+    border-radius: 20px;
+    padding: 2px 12px;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    color: #c2607a;
+  }
+  .group-pct-pill.full { background: #eef5e8; border-color: #b8d4a0; color: #5a8a40; }
+  .group-line { flex: 1; height: 1px; background: var(--border); }
+
+  /* HABIT ITEMS */
+  .habit-list { display: flex; flex-direction: column; gap: 8px; }
+  .habit-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 13px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: border-color 0.2s, transform 0.15s, background 0.2s;
+    animation: slideIn 0.3s ease;
+  }
+  .habit-item:hover { border-color: var(--accent2); transform: translateX(4px); }
+  .habit-item.done  { border-color: var(--pink); background: var(--done-bg); }
+
+  @keyframes slideIn { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+
+  .check-btn {
+    width: 28px; height: 28px; min-width: 28px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    background: transparent;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+    transition: all 0.2s;
+    color: transparent;
+  }
+  .habit-item.done .check-btn {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .check-btn:hover { border-color: var(--accent2); background: var(--pink-soft); }
+
+  .habit-info { flex: 1; }
+  .habit-name { font-size: 14px; font-weight: 600; color: var(--text); }
+  .habit-item.done .habit-name { text-decoration: line-through; color: var(--muted); }
+  .habit-meta { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+  .habit-streak { font-size: 11px; font-family: 'DM Mono', monospace; color: var(--muted); }
+  .cat-dot { width: 7px; height: 7px; border-radius: 50%; }
+
+  .habit-right { display: flex; align-items: center; gap: 8px; }
+  .week-dots { display: flex; gap: 3px; }
+  .week-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); }
+  .week-dot.filled    { background: var(--accent2); }
+  .week-dot.today-dot { background: var(--accent); }
+
+  .del-btn {
+    background: none; border: none; color: var(--muted);
+    cursor: pointer; font-size: 17px; padding: 3px 6px;
+    border-radius: 6px; transition: color 0.15s, background 0.15s; line-height: 1;
+  }
+  .del-btn:hover { color: var(--danger); background: #fdf0ee; }
+
+  /* PROGRESS */
+  .progress-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    margin-top: 8px;
+  }
+  .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .progress-header span { font-size: 13px; color: var(--muted); font-family: 'DM Mono', monospace; }
+  .progress-header strong { color: var(--accent); font-size: 15px; font-weight: 700; }
+  .progress-track { height: 10px; background: var(--border); border-radius: 5px; overflow: hidden; }
+  .progress-fill  { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent3)); border-radius: 5px; transition: width 0.5s ease; }
+
+  /* EMPTY */
+  .empty { text-align: center; padding: 32px; color: var(--muted); font-size: 14px; }
+
+  /* CAT COLORS */
+  .cat-prayer { background: #c9a0d4; }
+  .cat-quran  { background: #a8c8a0; }
+  .cat-read   { background: #d4a0b8; }
+  .cat-code   { background: #a0b8d4; }
+  .cat-other  { background: #d4c4a0; }
+
+  .bar-prayer { background: linear-gradient(90deg, #c9a0d4, #9b6fa8); }
+  .bar-quran  { background: linear-gradient(90deg, #a8c8a0, #5a8a60); }
+  .bar-read   { background: linear-gradient(90deg, #f4c2d4, #c2607a); }
+  .bar-code   { background: linear-gradient(90deg, #a0b8d4, #607aa0); }
+  .bar-other  { background: linear-gradient(90deg, #d4c4a0, #a08850); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-left">
+      <h1>Consistency <span>Tracker</span> 🌸</h1>
+      <p id="dateStr">Loading...</p>
+    </div>
+    <div class="date-badge" id="dateBadge">—</div>
+  </div>
+
+  <!-- TOP STATS -->
+  <div class="stats-row">
+    <div class="stat-card pink-card">
+      <div class="num c-pink" id="statDone">0</div>
+      <div class="label">Done today</div>
+    </div>
+    <div class="stat-card purple-card">
+      <div class="num c-purple" id="statStreak">0</div>
+      <div class="label">Best streak 🔥</div>
+    </div>
+    <div class="stat-card beige-card">
+      <div class="num c-beige" id="statTotal">0</div>
+      <div class="label">Total habits</div>
+    </div>
+    <div class="stat-card">
+      <div class="num c-lavend" id="statPct">0%</div>
+      <div class="label">Daily %</div>
+    </div>
+  </div>
+
+  <!-- DAILY % RING -->
+  <div class="daily-section">
+    <h2>📊 Daily routine breakdown</h2>
+    <div class="daily-layout">
+      <div class="ring-wrap">
+        <svg width="110" height="110" viewBox="0 0 110 110">
+          <defs>
+            <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%"   stop-color="#c9a0d4"/>
+              <stop offset="100%" stop-color="#f4c2d4"/>
+            </linearGradient>
+          </defs>
+          <circle class="ring-bg"   cx="55" cy="55" r="45"/>
+          <circle class="ring-fill" cx="55" cy="55" r="45" id="ringCircle"
+                  stroke-dasharray="282.7" stroke-dashoffset="282.7"/>
+        </svg>
+        <div class="ring-label">
+          <span class="pct-num" id="ringPct">0%</span>
+          <span class="pct-sub">today</span>
+        </div>
+      </div>
+      <div class="category-bars" id="catBars"></div>
+    </div>
+  </div>
+
+  <!-- WEEK -->
+  <div class="section-title">This week</div>
+  <div class="week-row" id="weekRow"></div>
+
+  <!-- ADD -->
+  <div class="section-title">Add a habit</div>
+  <div class="add-row">
+    <input id="habitInput" placeholder="e.g. Evening walk…" maxlength="50"/>
+    <select id="catSelect">
+      <option value="prayer">🕌 Prayer</option>
+      <option value="quran">📖 Quran</option>
+      <option value="read">📚 Reading</option>
+      <option value="code">💻 Coding</option>
+      <option value="other">⭐ Other</option>
+    </select>
+    <button class="add-btn" onclick="addHabit()">+</button>
+  </div>
+
+  <!-- HABIT GROUPS -->
+  <div id="habitGroups"></div>
+
+  <!-- BOTTOM PROGRESS -->
+  <div class="progress-wrap">
+    <div class="progress-header">
+      <span>Overall today</span>
+      <strong id="progressLabel">0 / 0</strong>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progressFill" style="width:0%"></div>
+    </div>
+  </div>
+
+</div>
+<script>
+const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+const GROUPS = [
+  { key:'prayer', label:'🕌 Prayer Times'     },
+  { key:'quran',  label:'📖 Quran'            },
+  { key:'read',   label:'📚 Book Reading'     },
+  { key:'code',   label:'💻 Coding Practice'  },
+  { key:'other',  label:'⭐ Other'            },
+];
+
+const now      = new Date();
+const todayKey = now.toISOString().split('T')[0];
+
+const DEFAULT_HABITS = [
+  { id:1, name:'Fajr Prayer',     cat:'prayer', streak:0, history:{} },
+  { id:2, name:'Zuhr Prayer',     cat:'prayer', streak:0, history:{} },
+  { id:3, name:'Asar Prayer',     cat:'prayer', streak:0, history:{} },
+  { id:4, name:'Maghrib Prayer',  cat:'prayer', streak:0, history:{} },
+  { id:5, name:'Isha Prayer',     cat:'prayer', streak:0, history:{} },
+  { id:6, name:'Read Quran',      cat:'quran',  streak:0, history:{} },
+  { id:7, name:'Book Reading',    cat:'read',   streak:0, history:{} },
+  { id:8, name:'Practice Coding', cat:'code',   streak:0, history:{} },
+];
+
+let state = JSON.parse(localStorage.getItem('ct_pink') || 'null') || {
+  habits: DEFAULT_HABITS, nextId: 9
+};
+state.habits.forEach(h => { if (!h.history) h.history = {}; });
+
+function save() { localStorage.setItem('ct_pink', JSON.stringify(state)); }
+
+function getWeekDays() {
+  return Array.from({ length:7 }, (_, i) => {
+    const d = new Date(now);
+    d.setDate(now.getDate() - (6 - i));
+    return d;
+  });
+}
+
+function renderDate() {
+  document.getElementById('dateStr').textContent =
+    `${DAYS[now.getDay()]}, ${MONTHS[now.getMonth()]} ${now.getDate()} — you've got this 🌸`;
+  document.getElementById('dateBadge').textContent = now.getFullYear();
+}
+
+function renderWeek() {
+  const row = document.getElementById('weekRow');
+  row.innerHTML = '';
+  getWeekDays().forEach(d => {
+    const key     = d.toISOString().split('T')[0];
+    const isToday = key === todayKey;
+    const total   = state.habits.length;
+    const done    = state.habits.filter(h => h.history[key]).length;
+    const pct     = total ? Math.round((done / total) * 100) : 0;
+    const div     = document.createElement('div');
+    div.className = 'week-day' + (isToday ? ' today' : '');
+    div.innerHTML = `
+      <div class="wd-name">${DAYS[d.getDay()]}</div>
+      <div class="wd-num">${d.getDate()}</div>
+      <div class="wd-bar"><div class="wd-fill" style="width:${pct}%"></div></div>`;
+    row.appendChild(div);
+  });
+}
+
+function getWeekDots(habit) {
+  return getWeekDays().map(d => {
+    const key     = d.toISOString().split('T')[0];
+    const isToday = key === todayKey;
+    const done    = !!habit.history[key];
+    let cls = 'week-dot';
+    if (done) cls += isToday ? ' today-dot' : ' filled';
+    return `<div class="${cls}"></div>`;
+  }).join('');
+}
+
+function renderGroups() {
+  const container = document.getElementById('habitGroups');
+  container.innerHTML = '';
+  GROUPS.forEach(g => {
+    const habits = state.habits.filter(h => h.cat === g.key);
+    if (!habits.length) return;
+    const done  = habits.filter(h => h.history[todayKey]).length;
+    const total = habits.length;
+    const pct   = total ? Math.round((done / total) * 100) : 0;
+    const grp   = document.createElement('div');
+    grp.className = 'group';
+    grp.innerHTML = `
+      <div class="group-header">
+        <span class="group-title">${g.label}</span>
+        <span class="group-pct-pill${pct === 100 ? ' full' : ''}">${pct}%</span>
+        <div class="group-line"></div>
+      </div>
+      <div class="habit-list" id="grp-${g.key}"></div>`;
+    container.appendChild(grp);
+    const list = grp.querySelector(`#grp-${g.key}`);
+    habits.forEach(h => {
+      const isDone = !!h.history[todayKey];
+      const item   = document.createElement('div');
+      item.className = 'habit-item' + (isDone ? ' done' : '');
+      item.id = 'habit-' + h.id;
+      item.innerHTML = `
+        <button class="check-btn" onclick="toggleHabit(${h.id})">${isDone ? '✓' : ''}</button>
+        <div class="habit-info">
+          <div class="habit-name">${h.name}</div>
+          <div class="habit-meta">
+            <div class="cat-dot cat-${h.cat}"></div>
+            <span class="habit-streak">🔥 ${h.streak} day streak</span>
+          </div>
+        </div>
+        <div class="habit-right">
+          <div class="week-dots">${getWeekDots(h)}</div>
+          <button class="del-btn" onclick="deleteHabit(${h.id})">×</button>
+        </div>`;
+      list.appendChild(item);
+    });
+  });
+}
+
+function renderStats() {
+  const done  = state.habits.filter(h => h.history[todayKey]).length;
+  const total = state.habits.length;
+  const pct   = total ? Math.round((done / total) * 100) : 0;
+  const best  = Math.max(0, ...state.habits.map(h => h.streak));
+
+  document.getElementById('statDone').textContent      = done;
+  document.getElementById('statStreak').textContent    = best;
+  document.getElementById('statTotal').textContent     = total;
+  document.getElementById('statPct').textContent       = pct + '%';
+  document.getElementById('progressLabel').textContent = `${done} / ${total}`;
+  document.getElementById('progressFill').style.width  = pct + '%';
+
+  const circ = 2 * Math.PI * 45;
+  document.getElementById('ringCircle').setAttribute('stroke-dasharray', circ.toFixed(1));
+  document.getElementById('ringCircle').setAttribute('stroke-dashoffset', (circ - (circ * pct / 100)).toFixed(1));
+  document.getElementById('ringPct').textContent = pct + '%';
+
+  const barsEl = document.getElementById('catBars');
+  barsEl.innerHTML = '';
+  GROUPS.forEach(g => {
+    const habits = state.habits.filter(h => h.cat === g.key);
+    if (!habits.length) return;
+    const gDone = habits.filter(h => h.history[todayKey]).length;
+    const gPct  = Math.round((gDone / habits.length) * 100);
+    barsEl.innerHTML += `
+      <div class="cat-bar-row">
+        <span class="cat-bar-label">${g.label}</span>
+        <div class="cat-bar-track">
+          <div class="cat-bar-fill bar-${g.key}" style="width:${gPct}%"></div>
+        </div>
+        <span class="cat-bar-pct">${gPct}%</span>
+      </div>`;
+  });
+}
+
+function renderAll() { renderWeek(); renderGroups(); renderStats(); }
+
+function toggleHabit(id) {
+  const h = state.habits.find(x => x.id === id);
+  if (!h) return;
+  if (h.history[todayKey]) { delete h.history[todayKey]; h.streak = Math.max(0, h.streak - 1); }
+  else { h.history[todayKey] = true; h.streak += 1; }
+  save(); renderAll();
+}
+
+function addHabit() {
+  const input = document.getElementById('habitInput');
+  const cat   = document.getElementById('catSelect').value;
+  const name  = input.value.trim();
+  if (!name) { input.focus(); return; }
+  state.habits.push({ id: state.nextId++, name, cat, streak: 0, history: {} });
+  input.value = '';
+  save(); renderAll();
+}
+
+function deleteHabit(id) {
+  state.habits = state.habits.filter(h => h.id !== id);
+  save(); renderAll();
+}
+
+document.getElementById('habitInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addHabit();
+});
+
+renderDate(); renderAll();
+</script>
+</body>
+</html>
